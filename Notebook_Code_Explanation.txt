@@ -1,0 +1,1006 @@
+================================================================================
+    SMART PHONE PRICE PREDICTION - DETAILED CODE EXPLANATION
+           (For Discussion & Presentation)
+================================================================================
+
+
+STEP 1: IMPORTING LIBRARIES
+================================================================================
+
+CODE:
+```python
+import pandas as pd
+import numpy as np
+import warnings
+warnings.filterwarnings('ignore')
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score, StratifiedKFold
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.impute import SimpleImputer
+
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.svm import SVC
+from sklearn.linear_model import LogisticRegression
+from xgboost import XGBClassifier
+
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, roc_curve
+
+import joblib
+```
+
+EXPLANATION:
+
+**Data Handling Libraries:**
+- `pandas (pd)`: Used for data manipulation and analysis. It provides DataFrames 
+  which are table-like structures for handling our smartphone dataset.
+- `numpy (np)`: Used for numerical computations and array operations. Essential 
+  for mathematical calculations on data.
+- `warnings.filterwarnings('ignore')`: Suppresses warning messages to keep output 
+  clean and focused on results.
+
+**Visualization Libraries:**
+- `matplotlib.pyplot`: The foundation for creating static plots and charts.
+- `seaborn`: Built on matplotlib, provides beautiful statistical visualizations 
+  with less code. Used for box plots, heatmaps, and bar charts.
+- `plt.style.use('seaborn-v0_8')`: Sets a clean, professional visual style.
+- `sns.set_palette("husl")`: Sets a diverse color palette for better distinction.
+
+**Machine Learning Libraries from Scikit-learn:**
+- `train_test_split`: Splits data into training and testing portions.
+- `GridSearchCV`: Performs exhaustive search over specified parameter values to 
+  find the best hyperparameters for each model.
+- `cross_val_score`: Evaluates model using cross-validation.
+- `StratifiedKFold`: Creates stratified folds that maintain class proportions.
+- `StandardScaler`: Normalizes features to have mean=0 and std=1.
+- `LabelEncoder`: Converts categorical text labels to numbers.
+- `SimpleImputer`: Fills missing values with specified strategy (mean/median/mode).
+
+**Machine Learning Models:**
+- `RandomForestClassifier`: Ensemble of decision trees using bagging.
+- `GradientBoostingClassifier`: Ensemble method that builds trees sequentially.
+- `SVC`: Support Vector Classifier for finding optimal decision boundary.
+- `LogisticRegression`: Linear model for binary classification.
+- `XGBClassifier`: Extreme Gradient Boosting - advanced boosting algorithm.
+
+**Evaluation Metrics:**
+- `accuracy_score`: Percentage of correct predictions.
+- `precision_score`: Of positive predictions, how many were correct.
+- `recall_score`: Of actual positives, how many were found.
+- `f1_score`: Harmonic mean of precision and recall.
+- `roc_auc_score`: Area Under ROC Curve - measures discrimination ability.
+- `confusion_matrix`: Shows true/false positives and negatives.
+
+**Model Persistence:**
+- `joblib`: Saves and loads Python objects efficiently, used for saving trained 
+  models and preprocessing objects.
+
+
+================================================================================
+STEP 2: LOADING AND EXPLORING DATA
+================================================================================
+
+CODE:
+```python
+train_df = pd.read_csv('train.csv')
+test_df = pd.read_csv('test.csv')
+
+print(f"Training data: {train_df.shape[0]} smartphones, {train_df.shape[1]} features")
+print(f"Test data: {test_df.shape[0]} smartphones, {test_df.shape[1]} features")
+
+train_df.head()
+train_df.info()
+```
+
+EXPLANATION:
+
+**Data Loading:**
+- `pd.read_csv()`: Reads CSV files into pandas DataFrame objects.
+- We load two separate files:
+  * `train.csv`: 867 smartphones for training the model (learning patterns)
+  * `test.csv`: 153 smartphones for testing (unseen data to evaluate performance)
+
+**Why Separate Train and Test?**
+- Training data teaches the model patterns in the data.
+- Test data simulates real-world predictions on data the model has never seen.
+- This separation prevents "cheating" - if we test on training data, the model 
+  might just memorize rather than learn general patterns.
+
+**Data Exploration:**
+- `.shape`: Returns (rows, columns) - shows dataset dimensions.
+- `.head()`: Shows first 5 rows to understand data structure.
+- `.info()`: Shows column names, data types, and non-null counts.
+
+**Dataset Information Discovered:**
+- 33 columns total (32 features + 1 target)
+- Mix of data types: 17 object (text), 14 float64 (decimals), 1 int64 (integer)
+- Features include: RAM, Storage, Battery, Screen, Processor specifications, etc.
+
+
+================================================================================
+STEP 3: TARGET VARIABLE ANALYSIS
+================================================================================
+
+CODE:
+```python
+train_counts = train_df['price'].value_counts()
+print(train_counts)
+
+percentage = (count / len(train_df)) * 100
+```
+
+EXPLANATION:
+
+**What is the Target Variable?**
+- The `price` column is what we want to predict.
+- It has two categories: "expensive" and "non-expensive"
+- This makes it a **binary classification problem**.
+
+**Class Distribution Found:**
+- Non-expensive: 623 phones (71.9%)
+- Expensive: 244 phones (28.1%)
+
+**Why This Matters:**
+- The dataset is **imbalanced** - more non-expensive than expensive phones.
+- This is realistic (more budget phones exist in the market).
+- We need to be careful that our model doesn't just predict "non-expensive" always.
+- Solutions used:
+  * Stratified sampling to maintain proportions in cross-validation
+  * Multiple metrics (not just accuracy) to ensure balanced performance
+
+
+================================================================================
+STEP 4: EXPLORATORY DATA ANALYSIS (EDA)
+================================================================================
+
+CODE:
+```python
+# Check for duplicates
+total_duplicates = train_df.duplicated().sum()  # Found 6 duplicates
+
+# Remove duplicates
+train_df = train_df.drop_duplicates()
+
+# Box plots for numerical features
+sns.boxplot(data=train_df, x='price', y=feature)
+
+# Bar charts for categorical features
+cross_tab = pd.crosstab(train_df[feature], train_df['price'], normalize='index') * 100
+```
+
+EXPLANATION:
+
+**Duplicate Handling:**
+- Found 6 duplicate rows in training data.
+- Removed duplicates to prevent data leakage and ensure clean analysis.
+- Duplicates can artificially inflate model performance if same data appears in 
+  both train and test splits.
+
+**Box Plots for Numerical Features:**
+Box plots show the distribution of numerical values for each price category.
+
+**Key Findings from Box Plots:**
+
+1. **Rating:**
+   - Expensive phones: Average 82.92
+   - Non-expensive phones: Average 76.80
+   - Difference: 6.12 points
+   - **Insight**: Higher-rated phones tend to be more expensive.
+
+2. **RAM Size GB:**
+   - Expensive phones: Average 8.82 GB
+   - Non-expensive phones: Average 5.50 GB
+   - Difference: 3.32 GB
+   - **Insight**: RAM is a strong indicator of price category.
+
+3. **Storage Size GB:**
+   - Expensive phones: Average 223.61 GB
+   - Non-expensive phones: Average 104.01 GB
+   - Difference: 119.59 GB
+   - **Insight**: Storage is highly predictive of price.
+
+4. **Battery Capacity:**
+   - Expensive phones: Average 4655.83 mAh
+   - Non-expensive phones: Average 4811.18 mAh
+   - Difference: -155.35 mAh
+   - **Insight**: Interestingly, cheaper phones have slightly larger batteries!
+     (Premium phones focus on efficiency over raw capacity)
+
+5. **Clock Speed:**
+   - Expensive phones: Average 2.82 GHz
+   - Non-expensive phones: Average 2.30 GHz
+   - Difference: 0.52 GHz
+   - **Insight**: Faster processors indicate expensive phones.
+
+**Cross-tabulation for Categorical Features:**
+Shows percentage of expensive/non-expensive for each category value.
+- Example: 5G phones are more likely to be expensive.
+- Certain brands strongly associated with expensive category (Apple, Samsung).
+
+
+================================================================================
+STEP 5: DATA PREPROCESSING - COMBINING DATASETS
+================================================================================
+
+CODE:
+```python
+train_df['source'] = 'train'
+test_df['source'] = 'test'
+combined_df = pd.concat([train_df, test_df], ignore_index=True)
+```
+
+EXPLANATION:
+
+**Why Combine Train and Test Data?**
+- Ensures consistent preprocessing across both datasets.
+- Some transformations (like encoding) need to know all possible values.
+- The 'source' column lets us split them back later.
+
+**The Process:**
+1. Add 'source' = 'train' to training data
+2. Add 'source' = 'test' to test data
+3. Concatenate (stack) both DataFrames vertically
+4. `ignore_index=True` resets row indices to 0, 1, 2, ...
+
+**Result:**
+- Combined dataset: 1020 rows (867 train + 153 test)
+- 33 columns (original 32 + source marker)
+
+
+================================================================================
+STEP 6: HANDLING MISSING VALUES
+================================================================================
+
+CODE:
+```python
+def clean_missing_values(df):
+    df_clean = df.copy()
+    
+    # For numerical columns: fill with median
+    numerical_cols = df_clean.select_dtypes(include=[np.number]).columns
+    for col in numerical_cols:
+        median_val = df_clean[col].median()
+        df_clean[col].fillna(median_val, inplace=True)
+    
+    # For categorical columns: fill with mode (most common value)
+    categorical_cols = df_clean.select_dtypes(include=['object']).columns
+    for col in categorical_cols:
+        mode_val = df_clean[col].mode()
+        df_clean[col].fillna(mode_val[0], inplace=True)
+    
+    return df_clean
+```
+
+EXPLANATION:
+
+**Two Strategies Based on Data Type:**
+
+**1. Numerical Features → Median Imputation**
+- **Why Median instead of Mean?**
+  * Median is the middle value when data is sorted.
+  * It's robust to outliers (extreme values don't affect it).
+  * Example: If phone prices are 100, 200, 300, 10000, mean = 2650 (skewed by 
+    outlier), but median = 250 (more representative).
+- **How it works:** Find the middle value of all non-missing values, fill 
+  missing entries with this value.
+
+**2. Categorical Features → Mode Imputation**
+- **Why Mode?**
+  * Mode is the most frequently occurring value.
+  * For categories, there's no concept of "average" or "median".
+  * The most common value is the safest assumption.
+- **Example:** If most phones are from "Samsung", fill missing brand with 
+  "Samsung".
+
+**Why Not Delete Missing Values?**
+- We would lose valuable data.
+- Small datasets can't afford to lose rows.
+- Imputation preserves data while handling incompleteness.
+
+**Result:** 0 missing values after cleaning.
+
+
+================================================================================
+STEP 7: FEATURE ENGINEERING
+================================================================================
+
+CODE:
+```python
+def create_new_features(df):
+    df_new = df.copy()
+    
+    # 1. Performance Score
+    df_new['performance_score'] = (
+        df_new['RAM Size GB'] * 0.3 + 
+        df_new['Storage Size GB'] * 0.1 + 
+        df_new['Clock_Speed_GHz'] * 10 * 0.6
+    )
+    
+    # 2. Camera Score
+    df_new['camera_score'] = (
+        df_new['primary_rear_camera_mp'] * 0.7 + 
+        df_new['primary_front_camera_mp'] * 0.3
+    )
+    
+    # 3. Display Score
+    df_new['display_score'] = (
+        df_new['Screen_Size'] * 0.3 + 
+        (df_new['Resolution_Width'] * df_new['Resolution_Height'] / 1000000) * 0.4 +
+        (df_new['Refresh_Rate'] / 10) * 0.3
+    )
+    
+    # 4. Battery Efficiency
+    df_new['battery_efficiency'] = df_new['battery_capacity'] / df_new['Screen_Size']
+    
+    # 5. Premium Features Count
+    df_new['premium_features_count'] = 0
+    for feature in ['5G', 'NFC', 'IR_Blaster']:
+        df_new['premium_features_count'] += (df_new[feature] == 'Yes').astype(int)
+    
+    # 6. Brand Premium Score
+    brand_ratings = df_new.groupby('brand')['rating'].mean().to_dict()
+    df_new['brand_premium_score'] = df_new['brand'].map(brand_ratings)
+    
+    return df_new
+```
+
+EXPLANATION:
+
+**What is Feature Engineering?**
+- Creating new features (columns) from existing ones.
+- Combines related information into more meaningful signals.
+- Often improves model performance significantly.
+
+**The 6 New Features Created:**
+
+**1. Performance Score** (Most Important - 14.71% importance)
+```
+performance_score = RAM × 0.3 + Storage × 0.1 + (Clock_Speed × 10) × 0.6
+```
+- **Why these weights?**
+  * CPU speed (60%): Most important for overall phone performance.
+  * RAM (30%): Affects multitasking and app performance.
+  * Storage (10%): Affects capacity but not speed.
+- **Purpose:** Creates a single metric representing computational power.
+
+**2. Camera Score**
+```
+camera_score = Rear_Camera_MP × 0.7 + Front_Camera_MP × 0.3
+```
+- **Why these weights?**
+  * Rear camera (70%): Primary camera for photos, videos.
+  * Front camera (30%): Used for selfies, video calls.
+- **Purpose:** Captures overall photography capability.
+
+**3. Display Score**
+```
+display_score = Screen_Size × 0.3 + (Resolution / 1,000,000) × 0.4 + (Refresh_Rate / 10) × 0.3
+```
+- **Components:**
+  * Screen size: Physical display area
+  * Resolution: Pixel count (divided by 1M to normalize)
+  * Refresh rate: Display smoothness (divided by 10 to normalize)
+- **Purpose:** Measures visual experience quality.
+
+**4. Battery Efficiency**
+```
+battery_efficiency = Battery_Capacity / Screen_Size
+```
+- **Logic:** mAh per inch of screen.
+- **Purpose:** Larger screens need more battery. This normalizes capacity 
+  relative to screen size.
+- **Higher value = better efficiency.**
+
+**5. Premium Features Count**
+```
+Count how many of: 5G, NFC, IR_Blaster the phone has
+Range: 0-3
+```
+- **Purpose:** Quantifies "premium-ness" of the phone.
+- **Insight:** More premium features → likely more expensive.
+
+**6. Brand Premium Score**
+```
+Average rating of all phones from that brand
+```
+- **How it works:**
+  * Group all phones by brand
+  * Calculate average rating for each brand
+  * Assign that average back to each phone
+- **Purpose:** Captures brand reputation and quality perception.
+
+**Result:** Dataset grows from 33 to 39 columns.
+
+
+================================================================================
+STEP 8: CATEGORICAL ENCODING
+================================================================================
+
+CODE:
+```python
+# Binary encoding for Yes/No features
+binary_features = ['Dual_Sim', '4G', '5G', 'Vo5G', 'NFC', 'IR_Blaster', 'memory_card_support']
+for feature in binary_features:
+    df_encoded[feature] = (df_encoded[feature] == 'Yes').astype(int)
+
+# Label encoding for other categorical features
+for col in categorical_cols:
+    le = LabelEncoder()
+    df_encoded[col] = le.fit_transform(df_encoded[col].astype(str))
+    label_encoders[col] = le
+```
+
+EXPLANATION:
+
+**Why Encode?**
+- Machine learning algorithms work with numbers, not text.
+- We need to convert all text columns to numerical format.
+
+**Two Encoding Strategies Used:**
+
+**1. Binary Encoding (for Yes/No features)**
+- Converts "Yes" → 1, "No" → 0
+- Simple and intuitive.
+- Features encoded: Dual_Sim, 4G, 5G, Vo5G, NFC, IR_Blaster, memory_card_support
+- **Example:** If phone has 5G → 5G column becomes 1
+
+**2. Label Encoding (for multi-category features)**
+- Assigns unique integer to each category.
+- Features encoded: Processor_Brand, Performance_Tier, brand, os_name, etc.
+- **Example:** 
+  * "Samsung" → 0
+  * "Apple" → 1
+  * "Xiaomi" → 2
+  * etc.
+
+**Why Store Encoders?**
+- `label_encoders` dictionary stores each encoder.
+- Needed later to:
+  * Encode new data for prediction
+  * Convert predictions back to original labels
+
+**Result:** All 39 columns are now numerical.
+
+
+================================================================================
+STEP 9: FINAL DATA CLEANING & SPLITTING
+================================================================================
+
+CODE:
+```python
+# Handle infinite values
+for col in numeric_cols:
+    combined_df[col] = combined_df[col].replace([np.inf, -np.inf], np.nan)
+    combined_df[col].fillna(median_val, inplace=True)
+
+# Split back to train and test
+train_processed = combined_df[combined_df['source'] == 'train'].copy()
+test_processed = combined_df[combined_df['source'] == 'test'].copy()
+
+# Prepare X (features) and y (target)
+X_train = train_processed.drop('price', axis=1)
+y_train = train_processed['price']
+X_test = test_processed.drop('price', axis=1)
+y_test = test_processed['price']
+
+# Encode target variable
+target_encoder = LabelEncoder()
+y_train_encoded = target_encoder.fit_transform(y_train)
+y_test_encoded = target_encoder.transform(y_test)
+```
+
+EXPLANATION:
+
+**Handling Infinite Values:**
+- Feature engineering can create infinite values (e.g., division by zero).
+- Replace ∞ and -∞ with NaN, then fill with median.
+- **Why?** Infinite values break model training.
+
+**Splitting Data Back:**
+- Use 'source' column to separate train and test data.
+- Remove 'source' column as it's not a feature.
+
+**Preparing Features (X) and Target (y):**
+- **X (Features):** All columns except 'price' - these are inputs.
+- **y (Target):** The 'price' column - what we want to predict.
+
+**Target Encoding:**
+- Convert "expensive"/"non-expensive" to 0/1.
+- Store encoder for converting predictions back to text.
+- Classes: ['expensive': 0, 'non-expensive': 1]
+
+**Result:**
+- X_train: 867 × 37 (training features)
+- X_test: 153 × 37 (test features)
+- y_train_encoded: 867 values (0 or 1)
+- y_test_encoded: 153 values (0 or 1)
+
+
+================================================================================
+STEP 10: FEATURE SELECTION
+================================================================================
+
+CODE:
+```python
+# Use Random Forest to identify important features
+rf_selector = RandomForestClassifier(n_estimators=100, random_state=42)
+rf_selector.fit(X_train, y_train_encoded)
+
+# Get feature importance
+feature_importance = pd.DataFrame({
+    'feature': X_train.columns,
+    'importance': rf_selector.feature_importances_
+}).sort_values('importance', ascending=False)
+
+# Select top 25 features
+top_features = feature_importance.head(25)['feature'].tolist()
+X_train_selected = X_train[top_features]
+X_test_selected = X_test[top_features]
+```
+
+EXPLANATION:
+
+**Why Feature Selection?**
+- Not all features are equally useful.
+- Too many features can cause overfitting.
+- Reduces computation time.
+- Removes noisy/redundant information.
+
+**Method: Random Forest Feature Importance**
+- Train a Random Forest on all features.
+- Each feature gets an importance score based on how much it helps predictions.
+- Higher score = more important feature.
+
+**Top 15 Most Important Features Found:**
+1. performance_score (0.1471) - Our engineered feature!
+2. Clock_Speed_GHz (0.1060)
+3. NFC (0.0843)
+4. display_score (0.0631)
+5. Resolution_Height (0.0571)
+6. rating (0.0570)
+7. battery_efficiency (0.0380)
+8. premium_features_count (0.0377)
+9. brand (0.0357)
+10. RAM Size GB (0.0321)
+11. Storage Size GB (0.0297)
+12. fast_charging_power (0.0289)
+13. camera_score (0.0272)
+14. Processor_Series (0.0263)
+15. Screen_Size (0.0245)
+
+**Key Insight:**
+- Engineered features (performance_score, display_score) ranked highest!
+- This validates our feature engineering approach.
+- 4 of top 15 are our created features.
+
+**Result:** Selected top 25 features from 37 total.
+
+
+================================================================================
+STEP 11: FEATURE SCALING
+================================================================================
+
+CODE:
+```python
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train_selected)
+X_test_scaled = scaler.transform(X_test_selected)
+```
+
+EXPLANATION:
+
+**What is Scaling?**
+- Transforms features to have similar ranges.
+- StandardScaler makes each feature have mean=0 and std=1.
+
+**Formula (Z-score normalization):**
+```
+z = (x - μ) / σ
+```
+Where:
+- x = original value
+- μ = mean of the feature
+- σ = standard deviation
+
+**Why is Scaling Important?**
+
+**Problem without scaling:**
+- RAM: ranges 1-18 GB
+- Battery: ranges 1000-8000 mAh
+- Rating: ranges 0-100
+
+Models might think battery is more important just because its numbers are bigger!
+
+**After scaling:**
+All features have similar ranges (-3 to +3 typically), so they contribute equally.
+
+**Why fit on train, transform both?**
+- `fit_transform(X_train)`: Learns mean/std from training data only.
+- `transform(X_test)`: Applies same transformation to test data.
+- **Why?** Test data simulates "future" data. We can't peek at it during training!
+
+
+================================================================================
+STEP 12: MODEL SETUP AND HYPERPARAMETERS
+================================================================================
+
+CODE:
+```python
+models = {
+    'Random Forest': {
+        'model': RandomForestClassifier(random_state=42),
+        'params': {
+            'n_estimators': [100, 200],
+            'max_depth': [10, 20, None],
+            'min_samples_split': [2, 5]
+        }
+    },
+    'XGBoost': {
+        'model': XGBClassifier(random_state=42, eval_metric='logloss'),
+        'params': {
+            'n_estimators': [100, 200],
+            'max_depth': [3, 6],
+            'learning_rate': [0.1, 0.2]
+        }
+    },
+    # ... other models ...
+}
+```
+
+EXPLANATION:
+
+**The 5 Models and Their Hyperparameters:**
+
+**1. Random Forest Classifier**
+An ensemble of decision trees using bagging.
+
+Hyperparameters:
+- `n_estimators` [100, 200]: Number of trees in the forest.
+  More trees = more stable but slower.
+  
+- `max_depth` [10, 20, None]: Maximum depth of each tree.
+  Deeper trees can learn complex patterns but may overfit.
+  None = trees grow until pure leaves.
+  
+- `min_samples_split` [2, 5]: Minimum samples to split a node.
+  Higher values prevent overfitting.
+
+**2. XGBoost (Extreme Gradient Boosting)**
+Advanced boosting algorithm that builds trees sequentially.
+
+Hyperparameters:
+- `n_estimators` [100, 200]: Number of boosting rounds.
+  
+- `max_depth` [3, 6]: Maximum tree depth.
+  XGBoost works well with shallower trees.
+  
+- `learning_rate` [0.1, 0.2]: Step size shrinkage.
+  Lower = slower but more accurate.
+
+**3. Logistic Regression**
+Linear model for binary classification.
+
+Hyperparameters:
+- `C` [0.1, 1, 10]: Inverse regularization strength.
+  Lower C = stronger regularization.
+  
+- `penalty` ['l1', 'l2']: Regularization type.
+  L1 = can shrink coefficients to zero (feature selection).
+  L2 = shrinks all coefficients proportionally.
+  
+- `solver` ['liblinear']: Optimization algorithm.
+
+**4. Support Vector Machine (SVM)**
+Finds optimal decision boundary between classes.
+
+Hyperparameters:
+- `C` [0.1, 1, 10]: Regularization parameter.
+  Higher C = stricter classification.
+  
+- `kernel` ['rbf', 'linear']: Kernel type.
+  RBF = handles non-linear patterns.
+  Linear = simpler, faster.
+
+**5. Gradient Boosting Classifier**
+Builds trees sequentially to correct errors.
+
+Hyperparameters:
+- `n_estimators` [100, 200]: Number of boosting stages.
+  
+- `max_depth` [3, 5]: Maximum tree depth.
+  
+- `learning_rate` [0.1, 0.2]: Shrinkage factor.
+
+
+================================================================================
+STEP 13: TRAINING WITH GRIDSEARCHCV
+================================================================================
+
+CODE:
+```python
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+for model_name, model_config in models.items():
+    grid_search = GridSearchCV(
+        model_config['model'],
+        model_config['params'],
+        cv=cv,
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=0
+    )
+    
+    grid_search.fit(X_train_scaled, y_train_encoded)
+    best_models[model_name] = grid_search.best_estimator_
+```
+
+EXPLANATION:
+
+**What is GridSearchCV?**
+- "Grid Search" = Try all combinations of hyperparameters.
+- "CV" = Cross-Validation to evaluate each combination.
+- Finds the best hyperparameter combination automatically.
+
+**What is StratifiedKFold?**
+- Splits data into 5 folds.
+- "Stratified" = Maintains class proportions in each fold.
+- Since we have 72% non-expensive, each fold will also have ~72% non-expensive.
+- `shuffle=True`: Randomizes data before splitting.
+- `random_state=42`: Ensures reproducibility.
+
+**How GridSearchCV Works:**
+
+Example for Random Forest:
+- n_estimators: 2 options [100, 200]
+- max_depth: 3 options [10, 20, None]
+- min_samples_split: 2 options [2, 5]
+- Total combinations: 2 × 3 × 2 = 12 combinations
+
+For each combination:
+- Train on 4 folds, test on 1 fold
+- Repeat 5 times (each fold is test once)
+- Calculate average accuracy
+
+Total models trained: 12 combinations × 5 folds = 60 Random Forest models!
+
+**GridSearchCV Parameters:**
+- `cv=cv`: Use our StratifiedKFold
+- `scoring='accuracy'`: Optimize for accuracy
+- `n_jobs=-1`: Use all CPU cores for parallel training
+- `verbose=0`: Don't print too much output
+
+**Best Parameters Found:**
+
+| Model               | Best Parameters                                          | CV Score |
+|---------------------|----------------------------------------------------------|----------|
+| Random Forest       | max_depth=10, min_samples_split=5, n_estimators=200      | 93.19%   |
+| XGBoost             | learning_rate=0.2, max_depth=6, n_estimators=100         | 92.50%   |
+| Logistic Regression | C=10, penalty='l1', solver='liblinear'                   | 89.62%   |
+| SVM                 | C=10, kernel='rbf'                                       | 91.58%   |
+| Gradient Boosting   | learning_rate=0.2, max_depth=3, n_estimators=200         | 92.61%   |
+
+
+================================================================================
+STEP 14: MODEL EVALUATION ON TEST DATA
+================================================================================
+
+CODE:
+```python
+for model_name, model in best_models.items():
+    # Make predictions
+    y_pred = model.predict(X_test_scaled)
+    y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
+    
+    # Calculate metrics
+    accuracy = accuracy_score(y_test_encoded, y_pred)
+    precision = precision_score(y_test_encoded, y_pred)
+    recall = recall_score(y_test_encoded, y_pred)
+    f1 = f1_score(y_test_encoded, y_pred)
+    auc = roc_auc_score(y_test_encoded, y_pred_proba)
+```
+
+EXPLANATION:
+
+**Prediction Types:**
+- `predict()`: Returns class labels (0 or 1)
+- `predict_proba()`: Returns probability for each class [P(0), P(1)]
+- `[:, 1]` takes probability of class 1 (non-expensive)
+
+**Evaluation Metrics Explained:**
+
+**1. Accuracy**
+```
+Accuracy = (Correct Predictions) / (Total Predictions)
+```
+- Simple and intuitive.
+- Can be misleading with imbalanced data.
+
+**2. Precision**
+```
+Precision = True Positives / (True Positives + False Positives)
+```
+- "Of all phones I predicted as expensive, how many are actually expensive?"
+- Important when false positives are costly.
+
+**3. Recall (Sensitivity)**
+```
+Recall = True Positives / (True Positives + False Negatives)
+```
+- "Of all actually expensive phones, how many did I find?"
+- Important when missing positives is costly.
+
+**4. F1-Score**
+```
+F1 = 2 × (Precision × Recall) / (Precision + Recall)
+```
+- Harmonic mean of precision and recall.
+- Balances both metrics.
+- Good when you want balance between precision and recall.
+
+**5. AUC-ROC (Area Under ROC Curve)**
+- Measures discrimination ability across all thresholds.
+- Range: 0.5 (random guess) to 1.0 (perfect).
+- Robust to class imbalance.
+
+**Final Test Results:**
+
+| Model               | Accuracy | Precision | Recall | F1-Score | AUC    |
+|---------------------|----------|-----------|--------|----------|--------|
+| Random Forest       | 91.50%   | 94.50%    | 93.64% | 94.06%   | 0.9738 |
+| XGBoost             | 93.46%   | 96.30%    | 94.55% | 95.41%   | 0.9791 |
+| Logistic Regression | 89.54%   | 92.73%    | 92.73% | 92.73%   | 0.9575 |
+| SVM                 | 92.16%   | 93.75%    | 95.45% | 94.59%   | 0.9543 |
+| Gradient Boosting   | 93.46%   | 95.45%    | 95.45% | 95.45%   | 0.9742 |
+
+
+================================================================================
+STEP 15: CONFUSION MATRIX ANALYSIS
+================================================================================
+
+CODE:
+```python
+cm = confusion_matrix(y_test_encoded, results['predictions'])
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+```
+
+EXPLANATION:
+
+**What is a Confusion Matrix?**
+A 2×2 table showing prediction outcomes:
+
+```
+                    Predicted
+                Expensive    Non-Expensive
+Actual Expensive    TN           FP
+       Non-Exp      FN           TP
+```
+
+**For XGBoost (Best Model):**
+```
+                    Predicted
+                Expensive    Non-Expensive
+Actual Expensive    39           4
+       Non-Exp       6          104
+```
+
+- **True Negatives (39):** Correctly identified expensive phones as expensive.
+- **False Positives (6):** Non-expensive wrongly labeled expensive.
+- **False Negatives (4):** Expensive wrongly labeled non-expensive.
+- **True Positives (104):** Correctly identified non-expensive as non-expensive.
+
+**Interpretation:**
+- Total correct: 39 + 104 = 143 out of 153 (93.46%)
+- 6 non-expensive phones might be priced too high (false positives)
+- 4 expensive phones might be priced too low (false negatives)
+
+
+================================================================================
+STEP 16: SAVING THE MODEL
+================================================================================
+
+CODE:
+```python
+joblib.dump(best_model, 'best_smartphone_price_model.pkl')
+joblib.dump(scaler, 'feature_scaler.pkl')
+joblib.dump(target_encoder, 'target_encoder.pkl')
+joblib.dump(label_encoders, 'label_encoders.pkl')
+joblib.dump(top_features, 'selected_features.pkl')
+```
+
+EXPLANATION:
+
+**Why Save These Objects?**
+
+**1. best_model (XGBoost):**
+- The trained classifier itself.
+- Contains learned patterns from training data.
+- Used for making predictions on new phones.
+
+**2. scaler (StandardScaler):**
+- Stores mean and std from training data.
+- New data must be scaled the same way.
+- Ensures consistent preprocessing.
+
+**3. target_encoder:**
+- Converts predictions (0/1) back to "expensive"/"non-expensive".
+- Makes output human-readable.
+
+**4. label_encoders:**
+- Dictionary of encoders for categorical features.
+- Needed to preprocess new phone data.
+
+**5. top_features:**
+- List of 25 feature names used.
+- Ensures we select same features for new data.
+
+**File Sizes:**
+- best_smartphone_price_model.pkl: ~20MB
+- feature_scaler.pkl: ~2KB
+- target_encoder.pkl: ~1KB
+- label_encoders.pkl: ~15KB
+- selected_features.pkl: ~1KB
+
+
+================================================================================
+FINAL SUMMARY
+================================================================================
+
+**What We Accomplished:**
+
+1. **Loaded** 1,020 smartphone records (867 train + 153 test)
+
+2. **Explored** the data:
+   - Identified class imbalance (72% non-expensive)
+   - Found key differences between price categories
+   - Visualized feature distributions
+
+3. **Preprocessed** the data:
+   - Removed 6 duplicates
+   - Handled missing values (median/mode imputation)
+   - Created 6 engineered features
+   - Encoded 17 categorical features
+   - Selected top 25 features
+   - Scaled all features
+
+4. **Trained 5 models** with hyperparameter tuning:
+   - Random Forest
+   - XGBoost (Winner!)
+   - Logistic Regression
+   - SVM
+   - Gradient Boosting
+
+5. **Evaluated** using multiple metrics:
+   - Accuracy, Precision, Recall, F1-Score, AUC-ROC
+   - Confusion matrices for detailed error analysis
+
+6. **Selected Best Model:** XGBoost with 93.46% accuracy
+
+7. **Saved** model and preprocessing objects for deployment
+
+**Key Insights:**
+
+1. **Feature Engineering is Powerful:**
+   - Our created features ranked in top 5 importance!
+   - performance_score alone accounts for 14.71% of predictions.
+
+2. **Hardware Specs Drive Pricing:**
+   - RAM, Storage, CPU speed are key differentiators.
+   - Premium features (5G, NFC) indicate expensive phones.
+
+3. **Ensemble Methods Perform Best:**
+   - Tree-based models (XGBoost, Random Forest, Gradient Boosting) 
+     outperformed linear models.
+   - XGBoost's sequential learning captured patterns best.
+
+4. **High Accuracy Achieved:**
+   - 93.46% accuracy on unseen test data.
+   - Balanced precision (96.30%) and recall (94.55%).
+
+
+================================================================================
+                              END OF EXPLANATION
+================================================================================
+

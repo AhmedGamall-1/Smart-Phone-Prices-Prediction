@@ -1,0 +1,45 @@
+print(f"\n📊 DATASET SUMMARY:")
+print(f"   • Training samples: {len(train_df)}")
+print(f"   • Test samples: {len(test_df)}")
+print(f"   • Original features: {len(train_df.columns)-1}")
+print(f"   • Features after engineering: {len(X_train.columns)}")
+print(f"   • Final features used: {len(top_features)}")
+print(f"   • Target classes: {list(target_encoder.classes_)}")
+
+print(f"\n🔧 WHAT WE DID:")
+print(f"   ✅ Loaded and explored smartphone data")
+print(f"   ✅ Cleaned missing values")
+print(f"   ✅ Created 6 new useful features")
+print(f"   ✅ Converted text to numbers")
+print(f"   ✅ Selected top 25 most important features")
+print(f"   ✅ Trained 5 different ML models")
+print(f"   ✅ Tuned hyperparameters for best performance")
+print(f"   ✅ Evaluated and compared all models")
+
+print(f"\n🤖 MODELS TRAINED:")
+for i, model_name in enumerate(models.keys(), 1):
+    status = "✅" if model_name in best_models else "❌"
+    print(f"   {i}. {status} {model_name}")
+
+print(f"\n🏆 FINAL RESULTS:")
+if len(evaluation_results) > 0:
+    performance_summary = pd.DataFrame(evaluation_results).T[['accuracy', 'precision', 'recall', 'f1_score', 'auc']]
+    performance_summary = performance_summary.round(4)
+    display(performance_summary)
+    
+    print(f"\n🥇 WINNER: {best_model_name}")
+    print(f"   • Accuracy: {best_accuracy:.4f} ({best_accuracy*100:.1f}%)")
+    print(f"   • This means our model correctly predicts {best_accuracy*100:.1f}% of phone prices!")
+else:
+    print("   No models were successfully trained.")
+
+print(f"\n🎯 TOP 5 MOST IMPORTANT FEATURES:")
+top_5_features = feature_importance.head(5)
+for i, (_, row) in enumerate(top_5_features.iterrows(), 1):
+    print(f"   {i}. {row['feature']} (importance: {row['importance']:.4f})")
+
+print(f"\n💡 KEY INSIGHTS:")
+print(f"   • Performance features (RAM, processor) are most important for price")
+print(f"   • Our engineered features helped improve predictions")
+print(f"   • {best_model_name} worked best for this dataset")
+print(f"   • The model can predict phone prices with {best_accuracy*100:.1f}% accuracy")
